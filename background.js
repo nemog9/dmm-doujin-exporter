@@ -21,7 +21,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
       if (limit > 0 && results.size >= limit) return false;
       const genre = el.querySelector('.defaultClassmE6be');
       const genreText = genre?.textContent.trim() ?? '';
-      if (!['ボイス', 'コミック', 'CG'].includes(genreText)) continue;
+      if (!['ボイス', 'コミック', 'CG', '動画'].includes(genreText)) continue;
       const a = el.querySelector('a[href]');
       const titleEl = el.querySelector('.productTitleCMVya p');
       const circleEl = el.querySelector('.circleNameGWNom');
@@ -43,7 +43,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
       const thumbnail = typeMatch
         ? `https://doujin-assets.dmm.co.jp/digital/${typeMatch[1]}/${id}/${id}pr.jpg`
         : imgSrc;
-      results.set(id, { title, circle, url, thumbnail, cv: '' });
+      results.set(id, { title, circle, url, thumbnail, cv: '', genre: genreText });
     }
     return false;
   };
@@ -151,7 +151,7 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
   }
 
   const mergedRows = [
-    ...newItems.map(r => ({ title: r.title, circle: r.circle, cv: r.cv, url: r.url, thumbnail: r.thumbnail })),
+    ...newItems.map(r => ({ title: r.title, circle: r.circle, cv: r.cv, genre: r.genre, url: r.url, thumbnail: r.thumbnail })),
     ...existing,
   ];
 
@@ -177,9 +177,9 @@ function buildFilename(inputFilename) {
 }
 
 function buildCSV(rows) {
-  const header = '"タイトル","サークル名","声優","URL","サムネイル"';
+  const header = '"タイトル","サークル名","声優","ジャンル","URL","サムネイル"';
   const lines = rows.map(r =>
-    `"${(r.title||'').replace(/"/g,'""')}","${(r.circle||'').replace(/"/g,'""')}","${(r.cv||'')}","${r.url||''}","${r.thumbnail||''}"`
+    `"${(r.title||'').replace(/"/g,'""')}","${(r.circle||'').replace(/"/g,'""')}","${(r.cv||'')}","${(r.genre||'')}","${r.url||''}","${r.thumbnail||''}"`
   );
   return '﻿' + [header, ...lines].join('\n');
 }

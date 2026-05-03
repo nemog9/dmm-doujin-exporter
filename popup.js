@@ -25,14 +25,22 @@ csvFile.addEventListener('change', (e) => {
     const lines = text.split('\n').filter(l => l.trim());
     existingIds = [];
     existingRows = [];
+    const headers = parseCSVLine(lines[0] || '');
+    const hasGenre = headers.includes('ジャンル');
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCSVLine(lines[i]);
       if (cols.length < 4) continue;
-      const [title, circle, cv, url, thumbnail = ''] = cols;
+      let title, circle, cv, genre, url, thumbnail;
+      if (hasGenre) {
+        [title, circle, cv, genre, url, thumbnail = ''] = cols;
+      } else {
+        [title, circle, cv, url, thumbnail = ''] = cols;
+        genre = '';
+      }
       const m = url.match(/product_id=([\w]+)/);
       if (m) {
         existingIds.push(m[1]);
-        existingRows.push({ title, circle, cv, url, thumbnail });
+        existingRows.push({ title, circle, cv, genre, url, thumbnail });
       }
     }
     fileArea.textContent = `✅ ${file.name}（既存${existingIds.length}件）`;
