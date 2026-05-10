@@ -177,9 +177,9 @@ function buildFilename(inputFilename) {
 }
 
 function buildCSV(rows) {
-  const header = '"タイトル","サークル名","声優","ジャンル","URL","サムネイル"';
+  const header = '"タイトル","サークル名","声優","ジャンル","URL","サムネイル","お気に入り","非表示"';
   const lines = rows.map(r =>
-    `"${(r.title||'').replace(/"/g,'""')}","${(r.circle||'').replace(/"/g,'""')}","${(r.cv||'')}","${(r.genre||'')}","${r.url||''}","${r.thumbnail||''}"`
+    `"${(r.title||'').replace(/"/g,'""')}","${(r.circle||'').replace(/"/g,'""')}","${(r.cv||'')}","${(r.genre||'')}","${r.url||''}","${r.thumbnail||''}","${r.favorite||''}","${r.hidden||''}"`
   );
   return '﻿' + [header, ...lines].join('\n');
 }

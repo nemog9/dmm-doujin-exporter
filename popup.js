@@ -26,21 +26,26 @@ csvFile.addEventListener('change', (e) => {
     existingIds = [];
     existingRows = [];
     const headers = parseCSVLine(lines[0] || '');
-    const hasGenre = headers.includes('ジャンル');
+    const idx = (name) => headers.indexOf(name);
+    const urlCol = idx('URL');
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCSVLine(lines[i]);
-      if (cols.length < 4) continue;
-      let title, circle, cv, genre, url, thumbnail;
-      if (hasGenre) {
-        [title, circle, cv, genre, url, thumbnail = ''] = cols;
-      } else {
-        [title, circle, cv, url, thumbnail = ''] = cols;
-        genre = '';
-      }
+      if (urlCol < 0 || cols.length <= urlCol) continue;
+      const get = (name) => { const i = idx(name); return i >= 0 ? (cols[i] || '') : ''; };
+      const url = cols[urlCol] || '';
       const m = url.match(/product_id=([\w]+)/);
       if (m) {
         existingIds.push(m[1]);
-        existingRows.push({ title, circle, cv, genre, url, thumbnail });
+        existingRows.push({
+          title:    get('タイトル'),
+          circle:   get('サークル名'),
+          cv:       get('声優'),
+          genre:    get('ジャンル'),
+          url,
+          thumbnail: get('サムネイル'),
+          favorite:  get('お気に入り'),
+          hidden:    get('非表示'),
+        });
       }
     }
     fileArea.textContent = `✅ ${file.name}（既存${existingIds.length}件）`;
