@@ -1,10 +1,8 @@
 # DMM Doujin Exporter
 
-DMMマイライブラリの同人作品（ボイス・コミック・CG）をCSVにエクスポートするChrome拡張機能。
+DMMマイライブラリの同人作品（ボイス・コミック・CG）をCSVShelf形式のCSVにエクスポートするChrome拡張機能。
 
-エクスポートしたデータは以下のリポジトリでいい感じに閲覧できます
-
-https://github.com/nemog9/doujin-shelf
+エクスポートしたCSVは、iOSアプリ CSVShelf の「CSVをインポート」で取り込めます。
 
 ## 機能
 
@@ -15,19 +13,26 @@ https://github.com/nemog9/doujin-shelf
 
 ## 出力形式
 
-UTF-8 BOM付きCSV
+[CSVShelf](https://github.com/nemog9/csv-shelf)（iOS アプリ）にそのまま取り込める CSV。UTF-8 BOM 付き。
 
 ```
-タイトル,サークル名,声優,URL,サムネイル
+"title","url","creators","thumbnail_url","category","note","favorite","hidden"
 ```
 
-| カラム | 内容 |
-|--------|------|
-| タイトル | 作品名 |
-| サークル名 | サークル名 |
-| 声優 | 声優名（ボイス）または作者名（コミック・CG）、複数はカンマ区切り |
-| URL | マイライブラリの作品詳細URL |
-| サムネイル | サムネイル画像URL |
+| 列 | 内容 |
+|----|------|
+| title | 作品名 |
+| url | マイライブラリの作品詳細 URL |
+| creators | サークル名・声優（ボイス）・作者（コミック・CG）を `|` 区切りでまとめたもの |
+| thumbnail_url | サムネイル画像 URL |
+| category | ジャンル（ボイス / コミック / CG / 動画） |
+| note | メモ（新規取得分は空。既存 CSV の値は保持） |
+| favorite / hidden | `1` / `0`（新規取得分は空 = 取り込み先の既存値を保持） |
+
+### 既存 CSV の読み込み（差分取得）
+CSVShelf 形式に加え、旧形式（`タイトル,サークル名,声優,ジャンル,URL,サムネイル,お気に入り,非表示`）も読める。
+旧形式を読み込んだ場合は、新形式に変換して出力する（サークルと声優は creators にまとめる）。
+CSVShelf から書き出した CSV を読み込めば、お気に入り・非表示・メモを保ったまま差分だけ追加できる。
 
 ## インストール
 
@@ -72,6 +77,14 @@ CSVなしで開始した場合は `doujin-library-YYYYMMDD-HHMMSS.csv` で保存
 ③ CSV出力
    既存CSVの内容 + 新規作品をマージしてダウンロード
 ```
+
+## 開発
+
+```
+node --test test/csv.test.mjs
+```
+
+CSVの読み書きは `csv.js`（popup と Service Worker で共有）。
 
 ## 注意事項
 

@@ -21,32 +21,15 @@ csvFile.addEventListener('change', (e) => {
   inputFilename = file.name;
   const reader = new FileReader();
   reader.onload = (ev) => {
-    const text = ev.target.result.replace(/^﻿/, '');
-    const lines = text.split('\n').filter(l => l.trim());
+    // 旧形式（タイトル,サークル名,声優,…）も CSVShelf 形式も読める。
+    const items = CSVTools.readItems(ev.target.result);
     existingIds = [];
     existingRows = [];
-    const headers = parseCSVLine(lines[0] || '');
-    const idx = (name) => headers.indexOf(name);
-    const urlCol = idx('URL');
-    for (let i = 1; i < lines.length; i++) {
-      const cols = parseCSVLine(lines[i]);
-      if (urlCol < 0 || cols.length <= urlCol) continue;
-      const get = (name) => { const i = idx(name); return i >= 0 ? (cols[i] || '') : ''; };
-      const url = cols[urlCol] || '';
-      const m = url.match(/product_id=([\w]+)/);
-      if (m) {
-        existingIds.push(m[1]);
-        existingRows.push({
-          title:    get('タイトル'),
-          circle:   get('サークル名'),
-          cv:       get('声優'),
-          genre:    get('ジャンル'),
-          url,
-          thumbnail: get('サムネイル'),
-          favorite:  get('お気に入り'),
-          hidden:    get('非表示'),
-        });
-      }
+    for (const it of items) {
+      const m = it.url.match(/product_id=([\w]+)/);
+      if (!m) continue;
+      existingIds.push(m[1]);
+      existingRows.push(it);
     }
     fileArea.textContent = `✅ ${file.name}（既存${existingIds.length}件）`;
     fileArea.classList.add('loaded');
@@ -54,26 +37,6 @@ csvFile.addEventListener('change', (e) => {
   };
   reader.readAsText(file, 'UTF-8');
 });
-
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current);
-  return result;
-}
 
 startBtn.addEventListener('click', async () => {
   const limit = parseInt(document.getElementById('limit').value) || 0;

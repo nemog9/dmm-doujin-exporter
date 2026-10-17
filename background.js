@@ -1,3 +1,5 @@
+importScripts('csv.js');
+
 const saveProgress = (data) => chrome.storage.local.set({ progress: data });
 
 const initialProgress = () => ({
@@ -43,7 +45,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
       const thumbnail = typeMatch
         ? `https://doujin-assets.dmm.co.jp/digital/${typeMatch[1]}/${id}/${id}pr.jpg`
         : imgSrc;
-      results.set(id, { title, circle, url, thumbnail, cv: '', genre: genreText });
+      results.set(id, { title, circle, url, thumbnail, cv: [], genre: genreText });
     }
     return false;
   };
@@ -77,15 +79,15 @@ async function fetchCVOnPage(url) {
     const res = await fetch(detailUrl);
     const html = await res.text();
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    let cv = '', author = '';
+    let cv = [], author = [];
     for (const dl of doc.querySelectorAll('.informationList')) {
       const ttl = dl.querySelector('.informationList__ttl')?.textContent.trim();
-      const vals = [...dl.querySelectorAll('.informationList__txt a')].map(a => a.textContent.trim()).join(',');
+      const vals = [...dl.querySelectorAll('.informationList__txt a')].map(a => a.textContent.trim()).filter(Boolean);
       if (ttl === '声優') cv = vals;
       if (ttl === '作者') author = vals;
     }
-    return cv || author;
-  } catch { return ''; }
+    return cv.length ? cv : author;
+  } catch { return []; }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -122,7 +124,7 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
   if (!newItems || newItems.length === 0) {
     const filename = buildFilename(inputFilename);
     if (existing.length > 0) {
-      await downloadCSV(buildCSV(existing), filename);
+      await downloadCSV(CSVTools.buildCSV(existing), filename);
       await saveProgress({ ...initialProgress(), phase: 'done', collected: 0, message: `新規作品はありませんでした（計${existing.length}件）` });
     } else {
       await saveProgress({ ...initialProgress(), phase: 'done', message: '新規作品はありませんでした', collected: 0 });
@@ -146,17 +148,17 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
       func: fetchCVOnPage,
       args: [newItems[i].url]
     });
-    newItems[i].cv = cvResult[0].result ?? '';
+    newItems[i].cv = cvResult[0].result ?? [];
     await new Promise(r => setTimeout(r, 500));
   }
 
   const mergedRows = [
-    ...newItems.map(r => ({ title: r.title, circle: r.circle, cv: r.cv, genre: r.genre, url: r.url, thumbnail: r.thumbnail })),
+    ...newItems.map(CSVTools.fromScraped),
     ...existing,
   ];
 
   const filename = buildFilename(inputFilename);
-  await downloadCSV(buildCSV(mergedRows), filename);
+  await downloadCSV(CSVTools.buildCSV(mergedRows), filename);
 
   await saveProgress({
     ...initialProgress(),
@@ -174,14 +176,6 @@ function buildFilename(inputFilename) {
   if (!inputFilename) return `doujin-library-${d}-${t}.csv`;
   const base = inputFilename.replace(/\.csv$/i, '').replace(/-\d{8}-\d{6}$/, '');
   return `${base}-${d}-${t}.csv`;
-}
-
-function buildCSV(rows) {
-  const header = '"タイトル","サークル名","声優","ジャンル","URL","サムネイル","お気に入り","非表示"';
-  const lines = rows.map(r =>
-    `"${(r.title||'').replace(/"/g,'""')}","${(r.circle||'').replace(/"/g,'""')}","${(r.cv||'')}","${(r.genre||'')}","${r.url||''}","${r.thumbnail||''}","${r.favorite||''}","${r.hidden||''}"`
-  );
-  return '﻿' + [header, ...lines].join('\n');
 }
 
 async function downloadCSV(csv, filename) {
