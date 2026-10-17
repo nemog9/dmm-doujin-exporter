@@ -51,24 +51,41 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
     return false;
   };
 
-  let prevTotal = document.querySelectorAll('.localListProductzKID2').length;
-  let unchanged = 0;
+  const count = () => document.querySelectorAll('.localListProductzKID2').length;
+  const loadMoreButton = () => [...document.querySelectorAll('button, a')]
+    .find(el => /もっと見る|さらに表示|もっと表示/.test(el.textContent || '') && el.offsetParent !== null);
 
-  while (unchanged < 3) {
-    if (limit > 0 && results.size >= limit) break;
-    const hitDup = extract();
-    if (hitDup) break;
+  let prevTotal = count();
+  let stalled = 0;
+  let reason = '';
 
+  while (true) {
+    if (limit > 0 && results.size >= limit) { reason = '取得件数の上限に達した'; break; }
+    if (extract()) { reason = '既存の作品に到達した（重複検知）'; break; }
+
+    // 続きの読み込みを促す: 読み込み中の表示まで移動し、ページ最下部へもスクロールし、「もっと見る」があれば押す。
     const loader = document.querySelector('.ajaxAreaxcTPC,.loadingIconmW5s8');
-    if (loader) loader.scrollIntoView({ behavior: 'smooth' });
-    await delay(2500);
+    if (loader) loader.scrollIntoView({ block: 'center' });
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    loadMoreButton()?.click();
 
-    const currTotal = document.querySelectorAll('.localListProductzKID2').length;
-    if (currTotal === prevTotal) unchanged++;
-    else { unchanged = 0; prevTotal = currTotal; }
+    // 新しい作品が増えるまで最大 20 秒待つ（回線やサーバーが遅くても途中で諦めない）。
+    let grew = false;
+    for (let t = 0; t < 40; t++) {
+      await delay(500);
+      const c = count();
+      if (c > prevTotal) { prevTotal = c; grew = true; break; }
+      if (t % 6 === 5) { window.scrollBy(0, -200); window.scrollTo(0, document.documentElement.scrollHeight); }
+    }
+    if (grew) stalled = 0;
+    else if (++stalled >= 2) { reason = '最後まで読み込んだ（これ以上増えなかった）'; break; }
   }
 
-  return [...results.values()].slice(0, limit > 0 ? limit : undefined);
+  return {
+    items: [...results.values()].slice(0, limit > 0 ? limit : undefined),
+    reason,
+    seen: count(),
+  };
 }
 
 async function fetchCVOnPage(detailUrl) {
@@ -115,16 +132,17 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
     func: scrapeLibrary,
     args: [existingIds, limit, !!fullScan]
   });
-  const newItems = results[0].result;
+  const { items: newItems, reason, seen } = results[0].result;
+  const scanNote = `（ライブラリ ${seen} 件を確認。停止理由: ${reason}）`;
   const existing = existingRows || [];
 
   if (!newItems || newItems.length === 0) {
     const filename = buildFilename(inputFilename);
     if (existing.length > 0) {
       await downloadCSV(CSVTools.buildCSV(existing), filename);
-      await saveProgress({ ...initialProgress(), phase: 'done', collected: 0, message: `新規作品はありませんでした（計${existing.length}件）` });
+      await saveProgress({ ...initialProgress(), phase: 'done', collected: 0, message: `新規作品はありませんでした（計${existing.length}件）${scanNote}` });
     } else {
-      await saveProgress({ ...initialProgress(), phase: 'done', message: '新規作品はありませんでした', collected: 0 });
+      await saveProgress({ ...initialProgress(), phase: 'done', message: `新規作品はありませんでした${scanNote}`, collected: 0 });
     }
     return;
   }
@@ -161,7 +179,7 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
     ...initialProgress(),
     phase: 'done',
     collected: newItems.length,
-    message: `完了！新規${newItems.length}件追加（計${mergedRows.length}件）`,
+    message: `完了！新規${newItems.length}件追加（計${mergedRows.length}件）${scanNote}`,
   });
 }
 
