@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseCSV, readItems, buildCSV, fromScraped, HEADER } = createRequire(import.meta.url)("../csv.js");
+const { parseCSV, readItems, buildCSV, fromScraped, HEADER, productId, normalizeURL, detailURL } = createRequire(import.meta.url)("../csv.js");
 
 const legacy = '﻿"タイトル","サークル名","声優","ジャンル","URL","サムネイル","お気に入り","非表示"\n' +
   '"夜更けの""ささやき""","サークルA","甲野 乙子,丙山 太郎","ボイス","https://www.dmm.co.jp/dc/-/mylibrary/detail/=/product_id=d_111111/","https://t/1.jpg","true",""\n' +
@@ -16,6 +16,22 @@ test("旧形式を読み、サークルと声優を creators にまとめる", (
   assert.equal(items[0].category, "ボイス");
   assert.equal(items[0].favorite, "1");
   assert.equal(items[1].favorite, "", "空は空のまま（アプリ側の値を保持させる）");
+});
+
+test("購入済み URL は作品詳細 URL に変換される（読み込み時・出力時）", () => {
+  const lib = "https://www.dmm.co.jp/dc/-/mylibrary/detail/=/product_id=d_294174/";
+  const detail = "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_294174/";
+  assert.equal(normalizeURL(lib), detail);
+  assert.equal(normalizeURL(detail), detail, "すでに詳細 URL ならそのまま");
+  assert.equal(normalizeURL("https://example.com/x"), "https://example.com/x", "DMM 以外は触らない");
+  assert.equal(productId(lib), "d_294174"); assert.equal(productId(detail), "d_294174");
+  assert.equal(detailURL("d_1"), "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_1/");
+  // 旧 CSV を読むと詳細 URL になり、そのまま出力される
+  const items = readItems(legacy);
+  assert.equal(items[0].url, "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_111111/");
+  assert.ok(buildCSV(items).includes("cid=d_111111/") && !buildCSV(items).includes("mylibrary"));
+  // 新規取得分に購入済み URL を渡しても詳細 URL で出る
+  assert.equal(fromScraped({ title: "t", circle: "", cv: [], url: lib, thumbnail: "", genre: "" }).url, detail);
 });
 
 test("出力は CSVShelf の列順で、BOM 付き・全フィールド引用", () => {

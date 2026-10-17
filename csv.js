@@ -64,7 +64,7 @@
     const get = (r, k) => (idx[k] >= 0 && idx[k] < r.length ? r[idx[k]] : '');
     return rows.slice(1).filter((r) => get(r, 'url')).map((r) => ({
       title: get(r, 'title').trim(),
-      url: get(r, 'url').trim(),
+      url: normalizeURL(get(r, 'url')),
       creators: dedupe([...splitNames(get(r, 'creators')), ...splitNames(get(r, 'circle')), ...splitNames(get(r, 'cv'))]),
       thumbnail: get(r, 'thumbnail').trim(),
       category: get(r, 'category').trim(),
@@ -72,6 +72,27 @@
       favorite: flag(get(r, 'favorite')),
       hidden: flag(get(r, 'hidden')),
     }));
+  }
+
+  // --- DMM の URL ---
+  // 購入済み: https://www.dmm.co.jp/dc/-/mylibrary/detail/=/product_id=d_294174/
+  // 作品詳細: https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_294174/
+  /** 作品 ID（d_294174 など）。購入済み URL・作品詳細 URL のどちらからでも取り出す。 */
+  function productId(url) {
+    const m = (url || '').match(/(?:product_id|cid)=(\w+)/);
+    return m ? m[1] : '';
+  }
+
+  const detailURL = (id) => `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=${id}/`;
+
+  /** DMM の購入済み URL は作品詳細 URL に直す。それ以外の URL はそのまま。 */
+  function normalizeURL(url) {
+    const u = (url || '').trim();
+    if (/dmm\.co\.jp\/dc\/-\/mylibrary\/detail\//.test(u)) {
+      const id = productId(u);
+      if (id) return detailURL(id);
+    }
+    return u;
   }
 
   const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
@@ -87,11 +108,11 @@
   /** 新規取得した作品（サークル + 声優/作者）を CSVShelf の 1 行にする。お気に入り・非表示・メモは空（= アプリ側の値を保持）。 */
   function fromScraped(s) {
     return {
-      title: s.title, url: s.url, creators: dedupe([...splitNames(s.circle), ...(s.cv || [])]),
+      title: s.title, url: normalizeURL(s.url), creators: dedupe([...splitNames(s.circle), ...(s.cv || [])]),
       thumbnail: s.thumbnail, category: s.genre, note: '', favorite: '', hidden: '',
     };
   }
 
-  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag };
+  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag, productId, detailURL, normalizeURL };
   if (typeof module !== 'undefined') module.exports = api; else root.CSVTools = api;
 })(typeof self !== 'undefined' ? self : globalThis);

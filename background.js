@@ -45,7 +45,8 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
       const thumbnail = typeMatch
         ? `https://doujin-assets.dmm.co.jp/digital/${typeMatch[1]}/${id}/${id}pr.jpg`
         : imgSrc;
-      results.set(id, { title, circle, url, thumbnail, cv: [], genre: genreText });
+      // 出力する URL は作品詳細ページ（購入済みページではない）。
+      results.set(id, { title, circle, url: `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=${id}/`, thumbnail, cv: [], genre: genreText });
     }
     return false;
   };
@@ -70,11 +71,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
   return [...results.values()].slice(0, limit > 0 ? limit : undefined);
 }
 
-async function fetchCVOnPage(url) {
-  const detailUrl = url.replace(
-    /\/dc\/-\/mylibrary\/detail\/=\/product_id=([\w]+)\//,
-    '/dc/doujin/-/detail/=/cid=$1/'
-  );
+async function fetchCVOnPage(detailUrl) {
   try {
     const res = await fetch(detailUrl);
     const html = await res.text();

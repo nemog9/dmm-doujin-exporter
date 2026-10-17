@@ -26,9 +26,10 @@ csvFile.addEventListener('change', (e) => {
     existingIds = [];
     existingRows = [];
     for (const it of items) {
-      const m = it.url.match(/product_id=([\w]+)/);
-      if (!m) continue;
-      existingIds.push(m[1]);
+      // 購入済み URL・作品詳細 URL のどちらの CSV でも作品 ID を取り出す（読み込み時に詳細 URL へ変換済み）。
+      const id = CSVTools.productId(it.url);
+      if (!id) continue;
+      existingIds.push(id);
       existingRows.push(it);
     }
     fileArea.textContent = `✅ ${file.name}（既存${existingIds.length}件）`;
