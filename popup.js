@@ -50,7 +50,7 @@ startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   progressArea.classList.add('active');
   setProgress(
-    fullScan ? '🔄 全件スキャン中...' : '🔄 スクロール中...',
+    fullScan ? '🔄 最後までスクロール中...' : '🔄 スクロール中（高速モード）...',
     'ライブラリを読み込んでいます',
     0
   );
@@ -86,7 +86,7 @@ function updateUI(p) {
       pct
     );
   } else if (p.phase === 'done') {
-    setProgress('🎉 完了！', p.message, 100);
+    setProgress('🎉 完了！', '', 100);
     setStatus(p.message, 'success');
   } else if (p.phase === 'error') {
     setProgress('❌ エラー', p.error, 0);
