@@ -13,7 +13,7 @@ DMMマイライブラリの同人作品（ボイス・コミック・CG）をCSV
 
 ## 出力形式
 
-[CSVShelf](https://github.com/nemog9/csv-shelf)（iOS アプリ）にそのまま取り込める CSV。UTF-8 BOM 付き。
+Hikidashi（iOS アプリ）にそのまま取り込める CSV。UTF-8 BOM 付き。
 
 ```
 "title","url","creators","thumbnail_url","category","note","favorite","hidden"
