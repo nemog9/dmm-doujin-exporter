@@ -160,10 +160,8 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
     await new Promise(r => setTimeout(r, 500));
   }
 
-  const mergedRows = [
-    ...newItems.map(CSVTools.fromScraped),
-    ...existing,
-  ];
+  // 既存の行はそのまま。新規分は、取得順（新しい購入が先頭）の逆順にして、末尾に足す。
+  const mergedRows = CSVTools.mergeForExport(existing, newItems);
 
   const filename = buildFilename(inputFilename);
   await downloadCSV(CSVTools.buildCSV(mergedRows), filename);

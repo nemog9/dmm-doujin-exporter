@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseCSV, readItems, buildCSV, fromScraped, HEADER, productId, normalizeURL, detailURL, parseDetailCreators } = createRequire(import.meta.url)("../csv.js");
+const { parseCSV, readItems, buildCSV, fromScraped, HEADER, productId, normalizeURL, detailURL, parseDetailCreators, mergeForExport } = createRequire(import.meta.url)("../csv.js");
 
 const legacy = '﻿"タイトル","サークル名","声優","ジャンル","URL","サムネイル","お気に入り","非表示"\n' +
   '"夜更けの""ささやき""","サークルA","甲野 乙子,丙山 太郎","ボイス","https://www.dmm.co.jp/dc/-/mylibrary/detail/=/product_id=d_111111/","https://t/1.jpg","true",""\n' +
@@ -78,4 +78,13 @@ test('詳細ページから声優（なければ作者）を取り出す（2026-
   const legacy = `<dl class="informationList"><dt class="informationList__ttl">声優</dt><dd class="informationList__txt"><a>旧構造の人</a></dd></dl>`;
   assert.deepEqual(parseDetailCreators(legacy), ['旧構造の人']);
   assert.deepEqual(parseDetailCreators('<p>声優</p>'), []);
+});
+
+test('新規分だけを逆順にして末尾に足し、既存の行の順序は変えない', () => {
+  const existing = [{ title: '既存B', url: 'https://x/b' }, { title: '既存A', url: 'https://x/a' }];
+  // DMM の一覧は、新しい購入が先頭: n3（最新）, n2, n1（最古）
+  const scraped = ['n3', 'n2', 'n1'].map((t) => ({ title: t, url: `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_${t}/`, circle: 'C', cv: [], genre: 'ボイス', thumbnail: '' }));
+  const rows = mergeForExport(existing, scraped);
+  assert.deepEqual(rows.map((r) => r.title), ['既存B', '既存A', 'n1', 'n2', 'n3']);   // 最新の n3 が、最後（= Hikidashi で最も新しい）
+  assert.deepEqual(mergeForExport([], scraped).map((r) => r.title), ['n1', 'n2', 'n3']);
 });

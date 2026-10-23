@@ -138,6 +138,16 @@
     return found.声優.length ? found.声優 : found.作者;
   }
 
-  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag, productId, detailURL, normalizeURL, parseDetailCreators };
+  /**
+   * 書き出す行の並び。既存の行は、そのままの順で、先頭に置く。
+   * 新しく取得した作品は、取得順（DMM は新しい購入が先頭）の逆順にして、末尾に足す。
+   * Hikidashi は、CSV の行の順に、新しい作品へ番号を振る（「追加が新しい順」で、後に入れたものが上になる）ので、
+   * 最後に買ったものが、一番上に来る。
+   */
+  function mergeForExport(existingRows, scrapedItems) {
+    return [...existingRows, ...scrapedItems.slice().reverse().map(fromScraped)];
+  }
+
+  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag, productId, detailURL, normalizeURL, parseDetailCreators, mergeForExport };
   if (typeof module !== 'undefined') module.exports = api; else root.CSVTools = api;
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hikidashi: DMM マイライブラリを CSV に書き出す
 // @description  購入済みの同人作品（ボイス・コミック・CG）を、Hikidashi（iOS アプリ）に取り込める CSV にする。iPhone の Safari + Userscripts 用。
-// @version      0.2.0
+// @version      0.3.0
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
@@ -272,7 +272,8 @@
     const fresh = items.map((it) => ({
       title: it.title, url: it.url, creators: dedupe([...(it.circle ? [it.circle] : []), ...it.cv]), thumbnail: it.thumbnail, category: it.genre,
     }));
-    const rows = [...fresh, ...prevRows];
+    // 既存の行はそのまま先頭に。新規分は、取得順（新しい購入が先頭）の逆順にして末尾へ（Hikidashi は行の順に番号を振るので、最後に買ったものが一番上に来る）。
+    const rows = [...prevRows, ...fresh.slice().reverse()];
     const csv = buildCSV(rows);
     const all = loadKnown(); items.forEach((it) => all.add(it.id)); saveKnown(all);
     const d = new Date();
