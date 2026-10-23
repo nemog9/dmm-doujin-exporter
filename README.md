@@ -53,6 +53,19 @@ Chrome ウェブストアでは配布していません。次の手順で、手�
 
 ソースから使う場合は、このリポジトリをクローンして、同じ手順でフォルダを選べます。
 
+## iPhone（Safari）で使う：Userscripts 版（試験的）
+PC がなくても、iPhone の Safari で、マイライブラリを CSV にできます。無料のアプリ [Userscripts](https://apps.apple.com/app/userscripts/id1463298887) を使います。
+
+1. App Store で「Userscripts」を入れ、アプリを開いて、スクリプトの保存フォルダを選ぶ。
+2. 「設定 → アプリ → Safari → 機能拡張 → Userscripts」をオンにして、`dmm.co.jp` へのアクセスを許可する。
+3. [`userscript/dmm-export.user.js`](userscript/dmm-export.user.js) を、手順 1 のフォルダに入れる（Raw を Safari で開いて、`aA` →「Userscripts」からインストールしてもよい）。
+4. Safari で DMM にログインし、マイライブラリを開く。画面の下に「Hikidashi 書き出し」のパネルが出る。
+5. 初回は「全件を取得」、2 回目以降は「新着だけ」を押す。**終わるまで、Safari を前面に出したまま、画面を開いておく**（画面が消えないようにする設定を使っていますが、ほかのアプリに切り替えると止まります）。進み具合と残り時間が出ます。
+6. 完了したら「CSV を保存」を押す（ダウンロードの確認が出たら許可）。保存した CSV を、Hikidashi の「設定 → CSV をインポート」で選ぶ。
+
+- 仕組みは Chrome 拡張と同じです（購入履歴を、自分の Safari の中だけで処理して、外部には送りません）。
+- `userscript/probe.user.js` は、画面の構造を調べるための診断用です（通常は使いません）。
+
 ## プライバシー
 
 - 取得した内容は、**ブラウザの中だけ**で処理して、CSVとして手元に保存します。作者を含め、外部のサーバーには、何も送信しません。
