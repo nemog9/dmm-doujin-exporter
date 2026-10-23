@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hikidashi: DMM マイライブラリを CSV に書き出す
 // @description  購入済みの同人作品（ボイス・コミック・CG）を、Hikidashi（iOS アプリ）に取り込める CSV にする。iPhone の Safari + Userscripts 用。
-// @version      0.3.0
+// @version      0.3.1
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
@@ -139,6 +139,18 @@
     <div id="hk-btns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     <input id="hk-file" type="file" accept=".csv,text/csv,text/plain,text/comma-separated-values" style="display:none">`;
   document.body.appendChild(panel);
+
+  // 一覧ページ（/dc/-/mylibrary/）でだけ表示する。作品詳細（/dc/-/mylibrary/detail/…）では出さない。
+  // DMM は、ページを読み込み直さずに画面を切り替える（SPA）ので、@match だけでは足りず、URL の変化を見て、出し入れする。
+  const isListPage = () => /^\/dc\/-\/mylibrary\/?$/.test(location.pathname);
+  let wasList = null;
+  const syncVisibility = () => {
+    const now = isListPage();
+    if (now === wasList) return;
+    wasList = now;
+    panel.style.display = now ? '' : 'none';
+    if (!now) cancelled = true;          // 一覧を離れたら、取得は中止する（作品の一覧が、画面から消えるため）
+  };
   const $ = (id) => panel.querySelector('#' + id);
 
   const setMsg = (t) => { $('hk-msg').textContent = t; };
@@ -304,6 +316,9 @@
     setButtons(...buttons);
   }
 
+  syncVisibility();
+  setInterval(syncVisibility, 400);
+  window.addEventListener('popstate', syncVisibility);
   renderCsvState();
   setMsg('マイライブラリを CSV にします。初回は「全件を取得」、2 回目以降は、前回の CSV を選んで「新着だけ」が速いです。');
   setButtons(btn('全件を取得', () => run(false)), btn('新着だけ', () => run(true), false));
