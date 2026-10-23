@@ -6,6 +6,9 @@ DMMマイライブラリの同人作品（ボイス・コミック・CG）を、
 
 > 非公式のツールです。DMM／FANZAとは関係がありません。自分の購入履歴を、自分のブラウザで取得して、手元のCSVに保存するためのものです。
 
+📱 iPhone アプリ: [Hikidashi（引き出し）を App Store で入手](https://apps.apple.com/jp/app/hikidashi-%E5%BC%95%E3%81%8D%E5%87%BA%E3%81%97/id6823911890)
+🧩 ページを 1 つずつ保存するなら: Chrome 拡張 [Hikidashi クリップ](https://github.com/nemog9/hikidashi-clip)（QR で iPhone に保存）
+
 ## 機能
 
 - マイライブラリをスクロールして作品情報を自動収集
