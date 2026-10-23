@@ -2,6 +2,9 @@
 // @name         Hikidashi: DMM マイライブラリを CSV に書き出す
 // @description  購入済みの同人作品（ボイス・コミック・CG）を、Hikidashi（iOS アプリ）に取り込める CSV にする。iPhone の Safari + Userscripts 用。
 // @version      0.4.0
+// @homepageURL  https://github.com/nemog9/dmm-doujin-exporter
+// @downloadURL  https://raw.githubusercontent.com/nemog9/dmm-doujin-exporter/main/userscript/dmm-export.user.js
+// @updateURL    https://raw.githubusercontent.com/nemog9/dmm-doujin-exporter/main/userscript/dmm-export.user.js
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
