@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hikidashi: DMM マイライブラリを CSV に書き出す
 // @description  購入済みの同人作品（ボイス・コミック・CG）を、Hikidashi（iOS アプリ）に取り込める CSV にする。iPhone の Safari + Userscripts 用。
-// @version      0.1.0
+// @version      0.2.0
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
@@ -27,7 +27,7 @@
   // ---- CSV（csv.js と同じ内容） ----
   const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
   const buildCSV = (rows) => '﻿' + [HEADER.map(q).join(','),
-    ...rows.map((r) => [r.title, r.url, r.creators.join('|'), r.thumbnail, r.category, '', '', ''].map(q).join(','))].join('\n') + '\n';
+    ...rows.map((r) => [r.title, r.url, r.creators.join('|'), r.thumbnail, r.category, r.note || '', r.favorite || '', r.hidden || ''].map(q).join(','))].join('\n') + '\n';
 
   const decodeEntities = (s) => s
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
@@ -47,6 +47,61 @@
       }
     }
     return found.声優.length ? found.声優 : found.作者;
+  }
+
+  /** RFC 4180: 引用符内の改行・"" エスケープ・CRLF に対応。空行は捨てる。（csv.js と同じ） */
+  function parseCSV(text) {
+    text = text.replace(/^\ufeff/, '');
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    const endField = () => { row.push(field); field = ''; };
+    const endRow = () => { endField(); if (!(row.length === 1 && row[0] === '')) rows.push(row); row = []; };
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+        else field += ch;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === ',') endField();
+      else if (ch === '\r') { endRow(); if (text[i + 1] === '\n') i++; }
+      else if (ch === '\n') endRow();
+      else field += ch;
+    }
+    if (field !== '' || row.length) endRow();
+    return rows;
+  }
+
+  const norm = (s) => (s || '').trim().toLowerCase();
+  const ALIASES = {
+    title: ['title', 'タイトル'], url: ['url'], creators: ['creators', 'クリエイター'],
+    circle: ['サークル名', 'サークル', 'circle'], cv: ['声優', '作者', 'cv', 'actors'],
+    thumbnail: ['thumbnail_url', 'thumbnail', 'サムネイル'], category: ['category', 'ジャンル', 'カテゴリ'],
+    note: ['note', 'メモ'], favorite: ['favorite', 'お気に入り'], hidden: ['hidden', '非表示'],
+  };
+  const splitNames = (s) => (s || '').split(/[|｜,，、;；]/).map((x) => x.trim()).filter(Boolean);
+  const flag = (v) => { const t = norm(v); return ['1', 'true', 'yes', 'y', '○', 'はい'].includes(t) ? '1' : ['0', 'false', 'no', 'n'].includes(t) ? '0' : ''; };
+  const productId = (url) => (url || '').match(/(?:product_id|cid)=(\w+)/)?.[1] || '';
+  const detailURL = (id) => `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=${id}/`;
+  const normalizeURL = (url) => {
+    const u = (url || '').trim();
+    return /dmm\.co\.jp\/dc\/-\/mylibrary\/detail\//.test(u) && productId(u) ? detailURL(productId(u)) : u;
+  };
+
+  /** 前回の CSV（Hikidashi の書き出し、または旧形式）→ 作品の配列。（csv.js の readItems と同じ） */
+  function readItems(text) {
+    const rows = parseCSV(text);
+    if (!rows.length) return [];
+    const header = rows[0].map(norm);
+    const col = (key) => header.findIndex((h) => ALIASES[key].map(norm).includes(h));
+    const idx = Object.fromEntries(Object.keys(ALIASES).map((k) => [k, col(k)]));
+    if (idx.url < 0) return [];
+    const get = (r, k) => (idx[k] >= 0 && idx[k] < r.length ? r[idx[k]] : '');
+    return rows.slice(1).filter((r) => get(r, 'url')).map((r) => ({
+      title: get(r, 'title').trim(), url: normalizeURL(get(r, 'url')),
+      creators: dedupe([...splitNames(get(r, 'creators')), ...splitNames(get(r, 'circle')), ...splitNames(get(r, 'cv'))]),
+      thumbnail: get(r, 'thumbnail').trim(), category: get(r, 'category').trim(),
+      note: get(r, 'note'), favorite: flag(get(r, 'favorite')), hidden: flag(get(r, 'hidden')),
+    }));
   }
 
   const dedupe = (names) => { const seen = new Set(); return names.filter((n) => !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase())); };
@@ -80,7 +135,9 @@
     <div style="font-weight:700;margin-bottom:6px">Hikidashi 書き出し</div>
     <div id="hk-msg" style="margin-bottom:8px">マイライブラリを CSV にします。</div>
     <div id="hk-bar" style="height:8px;background:#eee;border-radius:4px;overflow:hidden;margin-bottom:10px"><div id="hk-fill" style="height:100%;width:0;background:#ed7305"></div></div>
-    <div id="hk-btns" style="display:flex;gap:8px;flex-wrap:wrap"></div>`;
+    <div id="hk-csv" style="margin-bottom:8px;font-size:13px;color:#555"></div>
+    <div id="hk-btns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <input id="hk-file" type="file" accept=".csv,text/csv,text/plain,text/comma-separated-values" style="display:none">`;
   document.body.appendChild(panel);
   const $ = (id) => panel.querySelector('#' + id);
 
@@ -110,6 +167,32 @@
   let running = false;
   let cancelled = false;
 
+  // 前回の CSV（任意）。読み込むと、その中の作品は取り直さず、新しい作品だけを足して、お気に入り・メモ・非表示は、そのまま保つ。
+  let prevRows = [];
+  let prevName = '';
+  const renderCsvState = () => {
+    const el = $('hk-csv');
+    el.textContent = '';
+    const chooser = btn(prevRows.length ? '前回の CSV を選び直す' : '前回の CSV を選ぶ（任意）', () => $('hk-file').click(), false);
+    chooser.style.padding = '6px 10px'; chooser.style.fontSize = '13px';
+    el.appendChild(chooser);
+    const label = document.createElement('span');
+    label.style.marginLeft = '8px';
+    label.textContent = prevRows.length ? `${prevName}（${prevRows.length} 件）` : '選ぶと、新しい作品だけを足して、お気に入りなども保てます。';
+    el.appendChild(label);
+  };
+  $('hk-file').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      prevRows = readItems(await f.text());
+      prevName = f.name;
+      if (!prevRows.length) setMsg('この CSV から作品（url 列）を読み取れませんでした。');
+    } catch { prevRows = []; setMsg('CSV を読み込めませんでした。'); }
+    e.target.value = '';
+    renderCsvState();
+  });
+
   const loadKnown = () => { try { return new Set(JSON.parse(localStorage.getItem(KNOWN_KEY) || '[]')); } catch { return new Set(); } };
   const saveKnown = (ids) => { try { localStorage.setItem(KNOWN_KEY, JSON.stringify([...ids])); } catch { /* 保存できなくても続ける */ } };
 
@@ -117,7 +200,9 @@
   async function run(onlyNew) {
     running = true; cancelled = false;
     await keepAwake();
-    const known = onlyNew ? loadKnown() : new Set();
+    const fromCsv = prevRows.length > 0;
+    // CSV を読み込んでいれば、その中の作品を「取得済み」とする。なければ、この端末に覚えている ID を使う（「新着だけ」のときのみ）。
+    const known = fromCsv ? new Set(prevRows.map((r) => productId(r.url))) : (onlyNew ? loadKnown() : new Set());
     const results = new Map();
     const started = Date.now();
     setButtons(btn('中止', () => { cancelled = true; }, false));
@@ -129,7 +214,11 @@
       for (const el of itemEls()) {
         const it = readItem(el);
         if (!it || results.has(it.id)) continue;
-        if (known.has(it.id)) { reachedKnown = true; return true; }
+        if (known.has(it.id)) {
+          reachedKnown = true;
+          if (onlyNew) return true;                 // 新着だけ: 最初の取得済みで止める（一覧は新しい順）
+          continue;                                 // 全件: 取得済みは飛ばして、最後まで見る
+        }
         results.set(it.id, it);
       }
       return false;
@@ -180,14 +269,17 @@
     if (cancelled) return finish('中止しました。', null);
 
     // 3) CSV を作る
-    const rows = items.map((it) => ({
+    const fresh = items.map((it) => ({
       title: it.title, url: it.url, creators: dedupe([...(it.circle ? [it.circle] : []), ...it.cv]), thumbnail: it.thumbnail, category: it.genre,
     }));
+    const rows = [...fresh, ...prevRows];
     const csv = buildCSV(rows);
     const all = loadKnown(); items.forEach((it) => all.add(it.id)); saveKnown(all);
     const d = new Date();
-    const filename = `doujin-library-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.csv`;
-    finish(`完了！${items.length} 件を取得しました（${fmtDuration((Date.now() - started) / 1000)}）。\n下のボタンで保存し、Hikidashi の「設定 → CSV をインポート」で選んでください。`, { csv, filename });
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const base = prevName ? prevName.replace(/\.csv$/i, '').replace(/-\d{8}-\d{6}$/, '') : 'doujin-library';
+    const filename = `${base}-${stamp}.csv`;
+    finish(`完了！新しい作品 ${items.length} 件を取得しました${prevRows.length ? `（前回の ${prevRows.length} 件と合わせて計 ${rows.length} 件）` : ''}（${fmtDuration((Date.now() - started) / 1000)}）。\n下のボタンで保存し、Hikidashi の「設定 → CSV をインポート」で選んでください。`, { csv, filename });
   }
 
   function finish(message, file) {
@@ -211,6 +303,7 @@
     setButtons(...buttons);
   }
 
-  setMsg('マイライブラリを CSV にします。初回は「全件を取得」、2 回目以降は「新着だけ」が速いです。');
+  renderCsvState();
+  setMsg('マイライブラリを CSV にします。初回は「全件を取得」、2 回目以降は、前回の CSV を選んで「新着だけ」が速いです。');
   setButtons(btn('全件を取得', () => run(false)), btn('新着だけ', () => run(true), false));
 })();
