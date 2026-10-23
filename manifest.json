@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DMM Doujin Exporter",
-  "version": "2.0",
+  "version": "2.1",
   "description": "DMMマイライブラリの同人作品情報（ボイス・コミック・CG）をHikidashi形式のCSVでエクスポート",
   "permissions": ["scripting", "activeTab", "storage", "tabs", "downloads"],
   "host_permissions": ["https://www.dmm.co.jp/*"],

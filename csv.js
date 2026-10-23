@@ -113,6 +113,31 @@
     };
   }
 
-  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag, productId, detailURL, normalizeURL };
+  const decodeEntities = (s) => s
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(+d));
+
+  /**
+   * 作品詳細ページの HTML から、声優（なければ作者）の名前を取り出す。
+   * 現在の構造: <dt class="contentDetailData-hdg">声優</dt><dd class="contentDetailData-box"><a>名前</a></dd>
+   * 旧構造（.informationList__ttl / .informationList__txt）も読む。説明文の中の「声優」には反応しない（dt / ttl の本文が一致するものだけ）。
+   */
+  function parseDetailCreators(html) {
+    const found = { 声優: [], 作者: [] };
+    const names = (block) => [...block.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)]
+      .map((m) => decodeEntities(m[1].replace(/<[^>]+>/g, '')).trim()).filter(Boolean);
+    for (const m of html.matchAll(/<dt\b[^>]*>\s*(声優|作者)\s*<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)) {
+      if (!found[m[1]].length) found[m[1]] = names(m[2]);
+    }
+    if (!found.声優.length && !found.作者.length) {
+      for (const m of html.matchAll(/class="informationList__ttl"[^>]*>\s*(声優|作者)\s*<[\s\S]*?class="informationList__txt"[^>]*>([\s\S]*?)<\/(?:dd|div|p)>/gi)) {
+        if (!found[m[1]].length) found[m[1]] = names(m[2]);
+      }
+    }
+    return found.声優.length ? found.声優 : found.作者;
+  }
+
+  const api = { HEADER, parseCSV, readItems, buildCSV, fromScraped, flag, productId, detailURL, normalizeURL, parseDetailCreators };
   if (typeof module !== 'undefined') module.exports = api; else root.CSVTools = api;
 })(typeof self !== 'undefined' ? self : globalThis);

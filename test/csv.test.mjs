@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseCSV, readItems, buildCSV, fromScraped, HEADER, productId, normalizeURL, detailURL } = createRequire(import.meta.url)("../csv.js");
+const { parseCSV, readItems, buildCSV, fromScraped, HEADER, productId, normalizeURL, detailURL, parseDetailCreators } = createRequire(import.meta.url)("../csv.js");
 
 const legacy = '﻿"タイトル","サークル名","声優","ジャンル","URL","サムネイル","お気に入り","非表示"\n' +
   '"夜更けの""ささやき""","サークルA","甲野 乙子,丙山 太郎","ボイス","https://www.dmm.co.jp/dc/-/mylibrary/detail/=/product_id=d_111111/","https://t/1.jpg","true",""\n' +
@@ -63,3 +63,19 @@ test("新規取得分: サークル+声優、重複除去、お気に入り/非�
 });
 
 test("URL 列のない CSV は空", () => assert.deepEqual(readItems("a,b\n1,2\n"), []));
+
+test('詳細ページから声優（なければ作者）を取り出す（2026-10 の構造）', () => {
+  const voice = `<p>■クレジット<br>声優:雲八はち様</p>
+  <dl class="c_list_contentDetailData">
+    <dt class="contentDetailData-hdg">作者</dt>
+    <dd class="contentDetailData-box"><a href="/x">ありがた〜い私</a></dd>
+    <dt class="contentDetailData-hdg">声優</dt>
+    <dd class="contentDetailData-box"><a href="/y">雲八はち</a><a href="/z">A &amp; B</a></dd>
+  </dl>`;
+  assert.deepEqual(parseDetailCreators(voice), ['雲八はち', 'A & B']);   // 説明文の「声優:」には反応しない
+  const comic = `<dl><dt class="contentDetailData-hdg">作者</dt><dd class="contentDetailData-box"><a>作者さん</a></dd></dl>`;
+  assert.deepEqual(parseDetailCreators(comic), ['作者さん']);
+  const legacy = `<dl class="informationList"><dt class="informationList__ttl">声優</dt><dd class="informationList__txt"><a>旧構造の人</a></dd></dl>`;
+  assert.deepEqual(parseDetailCreators(legacy), ['旧構造の人']);
+  assert.deepEqual(parseDetailCreators('<p>声優</p>'), []);
+});

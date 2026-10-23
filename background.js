@@ -18,15 +18,16 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
   const results = new Map();
 
   const extract = () => {
-    const els = document.querySelectorAll('.localListProductzKID2');
+    // class 名の末尾（例: UX4x_）は DMM のビルドごとに変わるので、前方一致で探す。
+    const els = document.querySelectorAll('[class*="localListProduct"]');
     for (const el of els) {
       if (limit > 0 && results.size >= limit) return false;
-      const genre = el.querySelector('.defaultClassmE6be');
+      const genre = el.querySelector('[class*="listRightHeaderGenre"] span, [class*="defaultClass"]');
       const genreText = genre?.textContent.trim() ?? '';
       if (!['ボイス', 'コミック', 'CG', '動画'].includes(genreText)) continue;
       const a = el.querySelector('a[href]');
-      const titleEl = el.querySelector('.productTitleCMVya p');
-      const circleEl = el.querySelector('.circleNameGWNom');
+      const titleEl = el.querySelector('[class*="productTitle"] p');
+      const circleEl = el.querySelector('[class*="circleName"]');
       const imgEl = el.querySelector('img');
       if (!a || !titleEl) continue;
       const match = a.href.match(/product_id=([\w]+)/);
@@ -51,7 +52,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
     return false;
   };
 
-  const count = () => document.querySelectorAll('.localListProductzKID2').length;
+  const count = () => document.querySelectorAll('[class*="localListProduct"]').length;
   const loadMoreButton = () => [...document.querySelectorAll('button, a')]
     .find(el => /もっと見る|さらに表示|もっと表示/.test(el.textContent || '') && el.offsetParent !== null);
 
@@ -64,7 +65,7 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
     if (extract()) { reason = '既存の作品に到達した（重複検知）'; break; }
 
     // 続きの読み込みを促す: 読み込み中の表示まで移動し、ページ最下部へもスクロールし、「もっと見る」があれば押す。
-    const loader = document.querySelector('.ajaxAreaxcTPC,.loadingIconmW5s8');
+    const loader = document.querySelector('[class*="ajaxArea"],[class*="loadingIcon"]');
     if (loader) loader.scrollIntoView({ block: 'center' });
     window.scrollTo(0, document.documentElement.scrollHeight);
     loadMoreButton()?.click();
@@ -88,20 +89,12 @@ async function scrapeLibrary(existingIds, limit, fullScan) {
   };
 }
 
-async function fetchCVOnPage(detailUrl) {
+// 詳細ページの HTML を、ログイン中のページから取得して返す（解析は CSVTools.parseDetailCreators。テスト済み）。
+async function fetchDetailHTML(detailUrl) {
   try {
-    const res = await fetch(detailUrl);
-    const html = await res.text();
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    let cv = [], author = [];
-    for (const dl of doc.querySelectorAll('.informationList')) {
-      const ttl = dl.querySelector('.informationList__ttl')?.textContent.trim();
-      const vals = [...dl.querySelectorAll('.informationList__txt a')].map(a => a.textContent.trim()).filter(Boolean);
-      if (ttl === '声優') cv = vals;
-      if (ttl === '作者') author = vals;
-    }
-    return cv.length ? cv : author;
-  } catch { return []; }
+    const res = await fetch(detailUrl, { credentials: 'include' });
+    return res.ok ? await res.text() : '';
+  } catch { return ''; }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -158,12 +151,12 @@ async function handleStart({ existingIds, existingRows, limit, fullScan, inputFi
       error: '',
     });
 
-    const cvResult = await chrome.scripting.executeScript({
+    const htmlResult = await chrome.scripting.executeScript({
       target: { tabId },
-      func: fetchCVOnPage,
+      func: fetchDetailHTML,
       args: [newItems[i].url]
     });
-    newItems[i].cv = cvResult[0].result ?? [];
+    newItems[i].cv = CSVTools.parseDetailCreators(htmlResult[0].result ?? '');
     await new Promise(r => setTimeout(r, 500));
   }
 
