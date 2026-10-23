@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hikidashi: DMM マイライブラリを CSV に書き出す
 // @description  購入済みの同人作品（ボイス・コミック・CG）を、Hikidashi（iOS アプリ）に取り込める CSV にする。iPhone の Safari + Userscripts 用。
-// @version      0.3.1
+// @version      0.4.0
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
@@ -111,12 +111,14 @@
   const itemEls = () => document.querySelectorAll('[class*="localListProduct"]');
 
   function readItem(el) {
+    // 戻り値: 作品 = 取り込む / null = 対象外のジャンル（二度と見ない） / undefined = まだ描画が終わっていない（あとでもう一度見る）
     const genre = (el.querySelector('[class*="listRightHeaderGenre"] span, [class*="defaultClass"]')?.textContent || '').trim();
+    if (!genre) return undefined;
     if (!GENRES.includes(genre)) return null;
     const a = el.querySelector('a[href*="product_id="]');
     const title = (el.querySelector('[class*="productTitle"] p')?.textContent || '').trim();
     const id = (a?.getAttribute('href') || '').match(/product_id=(\w+)/)?.[1];
-    if (!id || !title) return null;
+    if (!id || !title) return undefined;
     const circle = (el.querySelector('[class*="circleName"]')?.textContent || '').trim();
     const imgSrc = el.querySelector('img')?.src || '';
     const type = imgSrc.match(/doujin-assets\.dmm\.co\.jp\/digital\/(\w+)\//)?.[1];
@@ -138,6 +140,9 @@
     <div id="hk-csv" style="margin-bottom:8px;font-size:13px;color:#555"></div>
     <div id="hk-btns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     <input id="hk-file" type="file" accept=".csv,text/csv,text/plain,text/comma-separated-values" style="display:none">`;
+  const style = document.createElement('style');
+  style.textContent = '@keyframes hk-slide{0%{margin-left:-35%}100%{margin-left:100%}}#hk-fill.hk-ind{width:35%!important;animation:hk-slide 1.2s linear infinite}';
+  panel.appendChild(style);
   document.body.appendChild(panel);
 
   // 一覧ページ（/dc/-/mylibrary/）でだけ表示する。作品詳細（/dc/-/mylibrary/detail/…）では出さない。
@@ -208,6 +213,33 @@
   const loadKnown = () => { try { return new Set(JSON.parse(localStorage.getItem(KNOWN_KEY) || '[]')); } catch { return new Set(); } };
   const saveKnown = (ids) => { try { localStorage.setItem(KNOWN_KEY, JSON.stringify([...ids])); } catch { /* 保存できなくても続ける */ } };
 
+  // ---- 進み具合の表示（1 秒ごとに更新するので、待っている間も止まって見えない） ----
+  const state = { phase: 'idle', started: 0, listCount: 0, stalled: 0, waitLeft: 0, done: 0, total: 0, detailStart: 0 };
+  let ticker = null;
+  const render = () => {
+    const elapsed = (Date.now() - state.started) / 1000;
+    const dots = '.'.repeat(1 + (Math.floor(Date.now() / 1000) % 3));
+    const fill = $('hk-fill');
+    if (state.phase === 'list') {
+      fill.classList.add('hk-ind');
+      let t = `一覧を読み込み中${dots} ${state.listCount} 件\n経過 ${fmtDuration(elapsed)}`;
+      if (state.stalled > 0) t += `\nしばらく増えていません。最後まで読み込めたか確認しています（${state.stalled} / 2 回目、あと最大 ${Math.ceil(state.waitLeft)} 秒）`;
+      setMsg(t + '\nこの画面を開いたままにしてください。');
+    } else if (state.phase === 'prepare') {
+      fill.classList.add('hk-ind');
+      setMsg(`一覧の読み込みが終わりました。${state.total} 件の声優・作者を取得する準備をしています${dots}`);
+    } else if (state.phase === 'detail') {
+      fill.classList.remove('hk-ind');
+      setProgress(state.total ? state.done / state.total : 0);
+      // 実際に経過した時間から、1 件あたりの実質の時間を出す（待ち時間・並行数を含む）。
+      const perItem = state.done ? (Date.now() - state.detailStart) / state.done : 0;
+      const remain = state.done >= 5 ? `残り ${fmtDuration((state.total - state.done) * perItem / 1000)}` : '残り時間を計測中…';
+      setMsg(`声優・作者を取得中${dots} ${state.done} / ${state.total} 件\n${remain}（経過 ${fmtDuration(elapsed)}）\nこの画面を開いたままにしてください。`);
+    }
+  };
+  const startTicker = () => { stopTicker(); ticker = setInterval(render, 1000); };
+  const stopTicker = () => { if (ticker) clearInterval(ticker); ticker = null; $('hk-fill').classList.remove('hk-ind'); };
+
   // ---- 本体 ----
   async function run(onlyNew) {
     running = true; cancelled = false;
@@ -217,67 +249,81 @@
     const known = fromCsv ? new Set(prevRows.map((r) => productId(r.url))) : (onlyNew ? loadKnown() : new Set());
     const results = new Map();
     const started = Date.now();
+    Object.assign(state, { phase: 'list', started, listCount: 0, stalled: 0, waitLeft: 0, done: 0, total: 0, detailStart: 0 });
     setButtons(btn('中止', () => { cancelled = true; }, false));
     setProgress(0);
+    startTicker(); render();
 
     // 1) 一覧を、最後まで（または前回の続きまで）読み込む
+    //    4,000 件を超える一覧でも固まらないよう、読み終えた要素は二度と見ず、一定数ごとに画面へ制御を返す。
+    const processed = new WeakSet();
     let prev = itemEls().length, stalled = 0, reachedKnown = false;
-    const collect = () => {
+    const collect = async () => {
+      let n = 0;
       for (const el of itemEls()) {
+        if (processed.has(el)) continue;
         const it = readItem(el);
-        if (!it || results.has(it.id)) continue;
-        if (known.has(it.id)) {
-          reachedKnown = true;
-          if (onlyNew) return true;                 // 新着だけ: 最初の取得済みで止める（一覧は新しい順）
-          continue;                                 // 全件: 取得済みは飛ばして、最後まで見る
+        if (it === undefined) continue;
+        processed.add(el);
+        if (it && !results.has(it.id)) {
+          if (known.has(it.id)) {
+            reachedKnown = true;
+            if (onlyNew) return true;               // 新着だけ: 最初の取得済みで止める（一覧は新しい順）
+          } else {
+            results.set(it.id, it);
+            state.listCount = results.size;
+          }
         }
-        results.set(it.id, it);
+        if (++n % 200 === 0) await delay(0);
       }
       return false;
     };
     while (!cancelled) {
-      if (collect()) break;
-      setMsg(`一覧を読み込み中… ${results.size} 件（経過 ${fmtDuration((Date.now() - started) / 1000)}）\nこの画面を開いたままにしてください。`);
+      if (await collect()) break;
       const loader = document.querySelector('[class*="ajaxArea"],[class*="loadingIcon"]');
       if (loader) loader.scrollIntoView({ block: 'center' });
       window.scrollTo(0, document.documentElement.scrollHeight);
       let grew = false;
       for (let t = 0; t < 40 && !cancelled; t++) {            // 新しい作品が増えるまで最大 20 秒待つ
+        state.waitLeft = (40 - t) * 0.5;
         await delay(500);
         const c = itemEls().length;
         if (c > prev) { prev = c; grew = true; break; }
         if (t % 6 === 5) { window.scrollBy(0, -200); window.scrollTo(0, document.documentElement.scrollHeight); }
       }
-      if (grew) stalled = 0; else if (++stalled >= 2) break;
+      if (grew) { stalled = 0; state.stalled = 0; } else { state.stalled = ++stalled; if (stalled >= 2) break; }
     }
-    collect();
-    if (cancelled) return finish('中止しました。', null);
+    await collect();
+    if (cancelled) { stopTicker(); return finish('中止しました。', null); }
 
     const items = [...results.values()];
     if (!items.length) {
+      stopTicker();
       return finish(onlyNew && reachedKnown ? '新しい作品はありませんでした。' : `作品が見つかりませんでした（画面の作品は ${itemEls().length} 件）。`, null);
     }
 
     // 2) 声優・作者を、詳細ページから取る（同時に CONCURRENCY 件）
-    let next = 0, done = 0, spent = 0;
-    const t0 = Date.now();
+    Object.assign(state, { phase: 'prepare', total: items.length });
+    render();
+    await delay(50);
+    Object.assign(state, { phase: 'detail', done: 0, detailStart: Date.now() });
+    render();
+    let next = 0;
     const worker = async () => {
       while (!cancelled) {
         const i = next++;
         if (i >= items.length) return;
-        const s = Date.now();
         try {
           const res = await fetch(items[i].url, { credentials: 'include' });
           items[i].cv = res.ok ? parseDetailCreators(await res.text()) : [];
         } catch { items[i].cv = []; }
-        spent += Date.now() - s; done++;
-        const avg = spent / done / CONCURRENCY;                 // 1 件あたりの実質の時間
-        setProgress(done / items.length);
-        setMsg(`声優・作者を取得中… ${done} / ${items.length} 件\n残り ${fmtDuration((items.length - done) * avg / 1000)}\nこの画面を開いたままにしてください。`);
+        state.done++;
+        render();
         await delay(GAP_MS);
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+    stopTicker();
     if (cancelled) return finish('中止しました。', null);
 
     // 3) CSV を作る
