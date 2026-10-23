@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DMM マイライブラリ 診断（iPhone 版の画面構造を調べる）
 // @description  画面の構造だけを集めて、JSON として保存・コピーする。作品名などの個人情報は、先頭の数件の要素に限り、含まれる。
-// @version      0.1.0
+// @version      0.2.0
 // @match        https://www.dmm.co.jp/dc/-/mylibrary/*
 // @run-at       document-idle
 // @noframes
@@ -10,13 +10,16 @@
 (() => {
   'use strict';
 
+  // class 名の末尾は、DMM のビルドごとに変わる（例: localListProductUX4x_）。前方一致と構造で探す。
   const SEL = {
-    item: '.localListProductzKID2',
-    genre: '.defaultClassmE6be',
-    title: '.productTitleCMVya p',
-    circle: '.circleNameGWNom',
-    loader: '.ajaxAreaxcTPC,.loadingIconmW5s8',
+    anchor: 'a[href*="/mylibrary/detail/=/product_id="]',
+    item: '[class*="localListProduct"]',
+    genre: '[class*="listRightHeaderGenre"] span',
+    title: '[class*="productTitle"] p',
+    circle: '[class*="circleName"]',
+    loader: '[class*="ajaxArea"],[class*="loadingIcon"]',
   };
+  const count = () => document.querySelectorAll(SEL.anchor).length;
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));
   const clip = (s, n = 2500) => (s.length > n ? s.slice(0, n) + `…(+${s.length - n}文字)` : s);
 
@@ -41,7 +44,7 @@
   };
 
   async function run() {
-    const report = { script: 'probe 0.1.0', at: new Date().toISOString() };
+    const report = { script: 'probe 0.2.0', at: new Date().toISOString() };
     report.page = {
       url: location.href.replace(/[?#].*$/, ''),   // クエリは含めない
       userAgent: navigator.userAgent,
@@ -52,30 +55,34 @@
     // 1) 既存のセレクタが、この画面で、効くか
     const items = [...document.querySelectorAll(SEL.item)];
     report.selectors = {
+      anchor: count(),
       item: items.length,
-      genre: document.querySelectorAll(SEL.item + ' ' + SEL.genre).length,
-      title: document.querySelectorAll(SEL.item + ' ' + SEL.title).length,
-      circle: document.querySelectorAll(SEL.item + ' ' + SEL.circle).length,
+      genre: document.querySelectorAll(SEL.genre).length,
+      title: document.querySelectorAll(SEL.title).length,
+      circle: document.querySelectorAll(SEL.circle).length,
       loader: document.querySelectorAll(SEL.loader).length,
-      anchorsWithProductId: document.querySelectorAll('a[href*="product_id="]').length,
     };
-    report.genres = [...new Set(items.map((el) => el.querySelector(SEL.genre)?.textContent.trim()).filter(Boolean))];
+    report.genres = [...new Set([...document.querySelectorAll(SEL.genre)].map((el) => el.textContent.trim()).filter(Boolean))];
 
     // 2) 作品 1 件ぶんの HTML（先頭 2 件。長すぎる部分は切る）
-    const anchors = [...document.querySelectorAll('a[href*="product_id="]')];
+    const anchors = [...document.querySelectorAll(SEL.anchor)];
     report.firstItemsHTML = (items.length ? items : anchors.map((a) => a.closest('li, article, div') || a)).slice(0, 2).map((el) => clip(el.outerHTML));
     report.firstAnchorAncestors = anchors.slice(0, 2).map((a) => chain(a));
 
     // 3) 一覧の続きの読み込み方（自動で増えるか、ボタンか）
     const buttons = [...document.querySelectorAll('button, a')].filter((el) => /もっと|さらに|次へ|続き|more/i.test(el.textContent || '') && el.offsetParent !== null);
     report.loadMoreButtons = buttons.slice(0, 5).map((b) => ({ tag: b.tagName, text: b.textContent.trim().slice(0, 30), classes: String(b.className) }));
-    const before = document.querySelectorAll(SEL.item).length;
+    const before = count();
+    const loaderEl = document.querySelector(SEL.loader);
+    if (loaderEl) loaderEl.scrollIntoView({ block: 'center' });
     window.scrollTo(0, document.documentElement.scrollHeight);
-    for (let i = 0; i < 20; i++) {                       // 最大 10 秒、増えるのを待つ
-      await delay(500);
-      if (document.querySelectorAll(SEL.item).length > before) break;
+    let waited = 0;
+    for (let i = 0; i < 40; i++) {                       // 最大 20 秒、増えるのを待つ
+      await delay(500); waited += 500;
+      if (count() > before) break;
+      if (i % 6 === 5) { window.scrollBy(0, -200); window.scrollTo(0, document.documentElement.scrollHeight); }
     }
-    report.scrollLoad = { before, after: document.querySelectorAll(SEL.item).length, grewByScrolling: document.querySelectorAll(SEL.item).length > before };
+    report.scrollLoad = { before, after: count(), grewByScrolling: count() > before, waitedMs: waited, hadLoaderElement: !!loaderEl };
 
     // 4) 詳細ページから声優・作者が取れるか（先頭 1 件を、この画面と同じ条件で、取得）
     const id = (anchors[0]?.href.match(/product_id=(\w+)/) || [])[1];
@@ -85,16 +92,31 @@
         const res = await fetch(detailUrl);
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        const lists = [...doc.querySelectorAll('.informationList')];
+        // ラベル（声優・作者・サークル名）の周りの構造を、HTML の文字列と、DOM の両方から出す。
+        const around = (word, n = 700) => {
+          const out = [];
+          let from = 0;
+          for (let k = 0; k < 3; k++) {
+            const i = html.indexOf(word, from);
+            if (i < 0) break;
+            out.push(html.slice(Math.max(0, i - n / 2), i + n / 2));
+            from = i + word.length;
+          }
+          return out;
+        };
+        const labelParents = (word) => [...doc.querySelectorAll('dt, th, span, div, p, h2, h3, li')]
+          .filter((el) => el.children.length === 0 && el.textContent.trim() === word)
+          .slice(0, 2)
+          .map((el) => ({ chain: chain(el, 5), parentHTML: clip((el.parentElement || el).outerHTML, 900) }));
+        const scripts = [...doc.querySelectorAll('script')].filter((el) => /声優|作者/.test(el.textContent));
         report.detail = {
           status: res.status,
           finalUrl: res.url.replace(/[?#].*$/, ''),
           htmlLength: html.length,
-          informationListCount: lists.length,
-          informationLists: lists.slice(0, 6).map((el) => clip(el.outerHTML, 1200)),
-          labelsFound: [...doc.querySelectorAll('.informationList__ttl')].map((el) => el.textContent.trim()),
-          // 予備: ラベルの語が、別の構造にあるか
-          bodyHasLabels: ['声優', '作者', 'サークル名'].map((w) => [w, html.includes(w)]),
+          oldSelectorLists: doc.querySelectorAll('.informationList').length,
+          htmlAround: { '声優': around('声優'), '作者': around('作者') },
+          domLabelParents: { '声優': labelParents('声優'), '作者': labelParents('作者'), 'サークル名': labelParents('サークル名') },
+          scriptsContainingLabels: scripts.slice(0, 2).map((el) => ({ type: el.type || '', id: el.id || '', snippet: clip(el.textContent.slice(Math.max(0, el.textContent.search(/声優|作者/) - 300)), 900) })),
         };
       } catch (e) {
         report.detail = { error: String(e) };
