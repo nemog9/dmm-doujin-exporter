@@ -11,6 +11,7 @@ DMM（FANZA）のマイライブラリにある購入済みの同人作品（ボ
 
 出来上がった CSV は、iPhone アプリ [Hikidashi（引き出し）](https://apps.apple.com/jp/app/hikidashi-%E5%BC%95%E3%81%8D%E5%87%BA%E3%81%97/id6823911890) の「設定 → CSV をインポート」で取り込みます。
 ページを 1 つずつ保存するなら、Chrome 拡張 [Hikidashi クリップ](https://github.com/nemog9/hikidashi-clip)（QR で iPhone に保存）もあります。
+DLsite の購入履歴を CSV にする、同じ作りのツール [DLsite Library Exporter](https://github.com/nemog9/dlsite-library-exporter) もあります。
 
 ---
 
